@@ -298,7 +298,7 @@ st.markdown("""
 <div class="hero-banner">
     <div style="display: flex; align-items: center; justify-content: space-between;">
         <div class="hero-header-title">⚡ BANG KILL PDF</div>
-        <span class="hero-badge">v1.0 Pro</span>
+        <span class="hero-badge"></span>
     </div>
     <p class="hero-subtitle">Splitter Untuk BI Dan BM</p>
 </div>
@@ -306,7 +306,7 @@ st.markdown("""
 
 # Upload Section Box
 with st.container(border=True):
-    st.subheader("📁 Muat Naik Fail Warta")
+    st.subheader("📁 Muat Naik PDF")
     uploaded_file = st.file_uploader(
         "Pilih fail PDF",
         type=["pdf"],
