@@ -308,8 +308,8 @@ def process_gazette_pdf(file_bytes, original_filename):
 st.title("📄 BANG KILL PDF")
 
 st.write(
-    "Upload PDF Warta Kerajaan untuk mengasingkan "
-    "muka surat Bahasa Melayu dan Bahasa Inggeris."
+    "Splitter Untuk BI Dan BM "
+    
 )
 
 st.divider()
