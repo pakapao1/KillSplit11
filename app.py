@@ -14,7 +14,7 @@ from pypdf import PdfReader, PdfWriter
 # ============================================================
 
 st.set_page_config(
-    page_title="BANG KILL PDF ",
+    page_title="BANG KILL PDF | Gazette Splitter",
     page_icon="⚡",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -308,7 +308,7 @@ st.markdown("""
 with st.container(border=True):
     st.subheader("📁 Muat Naik Fail Warta")
     uploaded_file = st.file_uploader(
-        "Pilih fail PDF ",
+        "Pilih fail PDF Warta Kerajaan yang ingin diasingkan",
         type=["pdf"],
         label_visibility="collapsed"
     )
@@ -339,7 +339,6 @@ if uploaded_file and split_btn:
                 uploaded_file.name
             )
 
-            st.balloons()
             st.success("✅ **Proses pengasingan selesai dengan jaya!**")
 
             st.markdown("### 📊 Ringkasan Hasil Process")
@@ -386,19 +385,20 @@ if uploaded_file and split_btn:
             st.write("")
             st.divider()
 
-            # Action Area - Single ZIP Download Button
+            # Action Area - Single ZIP Download Button with Internal Subfolder
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 for output_file in output_files:
                     filename = os.path.basename(output_file)
-                    zip_file.write(output_file, arcname=filename)
+                    # Masukkan fail ke dalam subfolder mengikut nama base_filename
+                    zip_file.write(output_file, arcname=f"{base_filename}/{filename}")
 
             zip_buffer.seek(0)
 
             st.download_button(
                 "📦 DOWNLOAD SEMUA FAIL (.ZIP 1-KLIK)",
                 data=zip_buffer,
-                file_name=f"{base_filename}_SPLIT.zip",
+                file_name=f"{base_filename}.zip",
                 mime="application/zip",
                 use_container_width=True,
                 type="primary"
