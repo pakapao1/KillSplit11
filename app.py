@@ -14,7 +14,7 @@ from pypdf import PdfReader, PdfWriter
 # ============================================================
 
 st.set_page_config(
-    page_title="BANG KILL PDF | Gazette Splitter",
+    page_title="BANG KILL PDF ",
     page_icon="⚡",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -308,7 +308,7 @@ st.markdown("""
 with st.container(border=True):
     st.subheader("📁 Muat Naik Fail Warta")
     uploaded_file = st.file_uploader(
-        "Pilih fail PDF Warta Kerajaan yang ingin diasingkan",
+        "Pilih fail PDF",
         type=["pdf"],
         label_visibility="collapsed"
     )
