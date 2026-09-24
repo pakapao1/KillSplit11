@@ -14,7 +14,7 @@ from pypdf import PdfReader, PdfWriter
 # ============================================================
 
 st.set_page_config(
-    page_title="BANG KILL PDF | Gazette Splitter",
+    page_title="BANG KILL PDF ",
     page_icon="⚡",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -300,13 +300,13 @@ st.markdown("""
         <div class="hero-header-title">⚡ BANG KILL PDF</div>
         <span class="hero-badge">Multi-File Batch</span>
     </div>
-    <p class="hero-subtitle">Splitter Muka Surat Warta Kerajaan (BM & BI)</p>
+    <p class="hero-subtitle">Splitter PDF BM & BI</p>
 </div>
 """, unsafe_allow_html=True)
 
 # Upload Section Box
 with st.container(border=True):
-    st.subheader("📁 Muat Naik Fail PDF (Boleh Pilih Banyak)")
+    st.subheader("📁 Muat Naik PDF ")
     uploaded_files = st.file_uploader(
         "Pilih satu atau beberapa fail PDF Warta Kerajaan",
         type=["pdf"],
