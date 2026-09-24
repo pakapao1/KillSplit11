@@ -1,3 +1,4 @@
+import io
 import os
 import re
 import tempfile
@@ -13,7 +14,7 @@ from pypdf import PdfReader, PdfWriter
 # ============================================================
 
 st.set_page_config(
-    page_title="Auto Split Gazette",
+    page_title="BANG KILL PDF",
     page_icon="📄",
     layout="centered"
 )
@@ -372,41 +373,51 @@ if uploaded_file:
                 st.divider()
 
                 # ------------------------------------------------
-                # DOWNLOAD BUTTONS
+                # 1-KLIK ZIP DOWNLOAD BUTTON
                 # ------------------------------------------------
 
-                for output_file in output_files:
+                zip_buffer = io.BytesIO()
 
-                    with open(
-                        output_file,
-                        "rb"
-                    ) as f:
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                    for output_file in output_files:
+                        filename = os.path.basename(output_file)
+                        zip_file.write(output_file, arcname=filename)
 
-                        file_data = f.read()
+                zip_buffer.seek(0)
 
-                    filename = os.path.basename(
-                        output_file
-                    )
+                st.download_button(
+                    "📦 Download Semua Fail (.ZIP 1-Klik)",
+                    data=zip_buffer,
+                    file_name=f"{base_filename}_SPLIT.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    type="primary"
+                )
 
-                    if filename.endswith("_MY.pdf"):
+                # Option berasingan jika masih perlukan muat turun individu
+                with st.expander("📄 Download Fail PDF Berasingan"):
+                    for output_file in output_files:
+                        with open(output_file, "rb") as f:
+                            file_data = f.read()
 
-                        st.download_button(
-                            "🇲🇾 Download Bahasa Melayu",
-                            data=file_data,
-                            file_name=filename,
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+                        filename = os.path.basename(output_file)
 
-                    elif filename.endswith("_EN.pdf"):
-
-                        st.download_button(
-                            "🇬🇧 Download English",
-                            data=file_data,
-                            file_name=filename,
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+                        if filename.endswith("_MY.pdf"):
+                            st.download_button(
+                                "🇲🇾 Download Bahasa Melayu sahaja",
+                                data=file_data,
+                                file_name=filename,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        elif filename.endswith("_EN.pdf"):
+                            st.download_button(
+                                "🇬🇧 Download English sahaja",
+                                data=file_data,
+                                file_name=filename,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
 
             except Exception as e:
 
