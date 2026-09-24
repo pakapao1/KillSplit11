@@ -305,7 +305,7 @@ def process_gazette_pdf(file_bytes, original_filename):
 # USER INTERFACE
 # ============================================================
 
-st.title("📄 Auto Split Gazette")
+st.title("📄 BANG KILL PDF")
 
 st.write(
     "Upload PDF Warta Kerajaan untuk mengasingkan "
