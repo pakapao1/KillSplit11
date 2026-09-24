@@ -14,7 +14,7 @@ from pypdf import PdfReader, PdfWriter
 # ============================================================
 
 st.set_page_config(
-    page_title="BANG KILL PDF ",
+    page_title="BANG KILL PDF | Gazette Splitter",
     page_icon="⚡",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -118,11 +118,11 @@ st.markdown("""
     .gazette-tag {
         background-color: #eff6ff;
         color: #1d4ed8;
-        padding: 6px 14px;
-        border-radius: 8px;
+        padding: 4px 10px;
+        border-radius: 6px;
         font-family: monospace;
         font-weight: 700;
-        font-size: 1rem;
+        font-size: 0.9rem;
         border: 1px solid #bfdbfe;
         display: inline-block;
     }
@@ -298,26 +298,27 @@ st.markdown("""
 <div class="hero-banner">
     <div style="display: flex; align-items: center; justify-content: space-between;">
         <div class="hero-header-title">⚡ BANG KILL PDF</div>
-        <span class="hero-badge"></span>
+        <span class="hero-badge">Multi-File Batch</span>
     </div>
-    <p class="hero-subtitle">Splitter Untuk BI Dan BM</p>
+    <p class="hero-subtitle">Splitter Muka Surat Warta Kerajaan (BM & BI)</p>
 </div>
 """, unsafe_allow_html=True)
 
 # Upload Section Box
 with st.container(border=True):
-    st.subheader("📁 Muat Naik PDF")
-    uploaded_file = st.file_uploader(
-        "Pilih fail PDF",
+    st.subheader("📁 Muat Naik Fail PDF (Boleh Pilih Banyak)")
+    uploaded_files = st.file_uploader(
+        "Pilih satu atau beberapa fail PDF Warta Kerajaan",
         type=["pdf"],
+        accept_multiple_files=True,
         label_visibility="collapsed"
     )
 
-    if uploaded_file:
-        st.info(f"📄 Fail sedia diproses: **{uploaded_file.name}**")
+    if uploaded_files:
+        st.info(f"📄 **{len(uploaded_files)} fail** sedia diproses.")
         
         split_btn = st.button(
-            "🚀 ASINGKAN PDF SEKARANG",
+            f"🚀 ASINGKAN {len(uploaded_files)} FAIL SEKARANG",
             use_container_width=True,
             type="primary"
         )
@@ -325,109 +326,118 @@ with st.container(border=True):
         split_btn = False
 
 # Processing Results
-if uploaded_file and split_btn:
-    with st.spinner("⚡ Sedang menganalisis & mengasingkan muka surat..."):
-        try:
-            (
-                base_filename,
-                output_files,
-                my_count,
-                en_count,
-                cover_found
-            ) = process_gazette_pdf(
-                uploaded_file.getvalue(),
-                uploaded_file.name
-            )
+if uploaded_files and split_btn:
+    with st.spinner(f"⚡ Sedang memproses {len(uploaded_files)} fail PDF..."):
+        all_results = []
+        zip_buffer = io.BytesIO()
 
-            st.success("✅ **Proses pengasingan selesai dengan jaya!**")
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            total_bm_pages = 0
+            total_en_pages = 0
 
-            st.markdown("### 📊 Ringkasan Hasil Process")
+            for uploaded_file in uploaded_files:
+                try:
+                    (
+                        base_filename,
+                        output_files,
+                        my_count,
+                        en_count,
+                        cover_found
+                    ) = process_gazette_pdf(
+                        uploaded_file.getvalue(),
+                        uploaded_file.name
+                    )
 
-            # Metadata ID Display
-            st.markdown(
-                f"**ID Gazette Dikesan:** <span class='gazette-tag'>{base_filename}</span>",
-                unsafe_allow_html=True
-            )
-            st.write("")
+                    total_bm_pages += my_count
+                    total_en_pages += en_count
 
-            # Grid Dashboard Cards for Stats
-            col1, col2, col3 = st.columns(3)
+                    # Masukkan setiap fail ke dalam subfolder bernama base_filename di dalam ZIP
+                    for output_file in output_files:
+                        filename = os.path.basename(output_file)
+                        zip_file.write(output_file, arcname=f"{base_filename}/{filename}")
 
-            with col1:
-                st.markdown(f"""
-                <div class="stat-card">
-                    <div class="stat-label">🇲🇾 Bahasa Melayu</div>
-                    <div class="stat-value">{my_count}</div>
-                    <div class="stat-desc">Muka Surat</div>
-                </div>
-                """, unsafe_allow_html=True)
+                    all_results.append({
+                        "status": "success",
+                        "filename": uploaded_file.name,
+                        "gazette_id": base_filename,
+                        "my_count": my_count,
+                        "en_count": en_count,
+                        "cover_found": cover_found,
+                        "output_files": output_files
+                    })
+                except Exception as e:
+                    all_results.append({
+                        "status": "error",
+                        "filename": uploaded_file.name,
+                        "error": str(e)
+                    })
 
-            with col2:
-                st.markdown(f"""
-                <div class="stat-card">
-                    <div class="stat-label">🇬🇧 English</div>
-                    <div class="stat-value">{en_count}</div>
-                    <div class="stat-desc">Muka Surat</div>
-                </div>
-                """, unsafe_allow_html=True)
+        zip_buffer.seek(0)
 
-            with col3:
-                cover_text = "Dikesan" if cover_found else "Tiada"
-                cover_sub = "Disertakan" if cover_found else "Abaikan"
-                st.markdown(f"""
-                <div class="stat-card">
-                    <div class="stat-label">📑 Cover Page</div>
-                    <div class="stat-value" style="font-size: 1.4rem; padding-top: 6px;">{cover_text}</div>
-                    <div class="stat-desc" style="color: #64748b;">{cover_sub}</div>
-                </div>
-                """, unsafe_allow_html=True)
+        st.success(f"✅ **Berjaya memproses {len(all_results)} fail!**")
 
-            st.write("")
-            st.divider()
+        st.markdown("### 📊 Ringkasan Keseluruhan")
 
-            # Action Area - Single ZIP Download Button with Internal Subfolder
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                for output_file in output_files:
-                    filename = os.path.basename(output_file)
-                    # Masukkan fail ke dalam subfolder mengikut nama base_filename
-                    zip_file.write(output_file, arcname=f"{base_filename}/{filename}")
+        # Top Level Overall Metrics
+        col1, col2, col3 = st.columns(3)
 
-            zip_buffer.seek(0)
+        with col1:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-label">📁 Jumlah Fail</div>
+                <div class="stat-value">{len(uploaded_files)}</div>
+                <div class="stat-desc">Diproses</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            st.download_button(
-                "📦 DOWNLOAD SEMUA FAIL (.ZIP 1-KLIK)",
-                data=zip_buffer,
-                file_name=f"{base_filename}.zip",
-                mime="application/zip",
-                use_container_width=True,
-                type="primary"
-            )
+        with col2:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-label">🇲🇾 Total BM</div>
+                <div class="stat-value">{total_bm_pages}</div>
+                <div class="stat-desc">Muka Surat</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            # Individual Download Expander
-            with st.expander("📂 Muat turun fail PDF secara berasingan"):
-                for output_file in output_files:
-                    with open(output_file, "rb") as f:
-                        file_data = f.read()
+        with col3:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-label">🇬🇧 Total EN</div>
+                <div class="stat-value">{total_en_pages}</div>
+                <div class="stat-desc">Muka Surat</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-                    filename = os.path.basename(output_file)
+        st.write("")
+        st.divider()
 
-                    if filename.endswith("_MY.pdf"):
-                        st.download_button(
-                            "🇲🇾 Muat turun Bahasa Melayu (.PDF)",
-                            data=file_data,
-                            file_name=filename,
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
-                    elif filename.endswith("_EN.pdf"):
-                        st.download_button(
-                            "🇬🇧 Muat turun English (.PDF)",
-                            data=file_data,
-                            file_name=filename,
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+        # Action Area - Single ZIP Download Button
+        zip_filename = (
+            f"{all_results[0]['gazette_id']}.zip" 
+            if len(all_results) == 1 and all_results[0]['status'] == 'success'
+            else "BANG_KILL_PDF_BATCH.zip"
+        )
 
-        except Exception as e:
-            st.error(f"❌ Gagal memproses PDF: {e}")
+        st.download_button(
+            f"📦 DOWNLOAD SEMUA FAIL (.ZIP 1-KLIK)",
+            data=zip_buffer,
+            file_name=zip_filename,
+            mime="application/zip",
+            use_container_width=True,
+            type="primary"
+        )
+
+        # Per-File Breakdown View
+        with st.expander("📂 Lihat butiran setiap fail yang diproses"):
+            for res in all_results:
+                if res["status"] == "success":
+                    st.markdown(
+                        f"🔹 **{res['filename']}** $\rightarrow$ ID Gazette: <span class='gazette-tag'>{res['gazette_id']}</span>",
+                        unsafe_allow_html=True
+                    )
+                    st.caption(
+                        f"🇲🇾 BM: {res['my_count']} muka surat | 🇬🇧 EN: {res['en_count']} muka surat | Cover: {'Dikesan' if res['cover_found'] else 'Tiada'}"
+                    )
+                else:
+                    st.error(f"❌ **{res['filename']}**: {res['error']}")
+                st.divider()
