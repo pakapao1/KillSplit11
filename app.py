@@ -318,10 +318,10 @@ def process_gazette_pdf(file_bytes, original_filename):
         all_pages = ([cover_page] if cover_page else []) + content_pages
 
         output_files.append(
-            _write_pdf(all_pages, output_dir, base_filename, "BM")
+            _write_pdf(all_pages, output_dir, base_filename, "MY")
         )
         output_files.append(
-            _write_pdf(all_pages, output_dir, base_filename, "BI")
+            _write_pdf(all_pages, output_dir, base_filename, "EN")
         )
 
         my_count = len(all_pages)
@@ -335,13 +335,13 @@ def process_gazette_pdf(file_bytes, original_filename):
         if bm_pages:
             pages = ([cover_page] if cover_page else []) + bm_pages
             output_files.append(
-                _write_pdf(pages, output_dir, base_filename, "BM")
+                _write_pdf(pages, output_dir, base_filename, "MY")
             )
 
         if en_pages:
             pages = ([cover_page] if cover_page else []) + en_pages
             output_files.append(
-                _write_pdf(pages, output_dir, base_filename, "BI")
+                _write_pdf(pages, output_dir, base_filename, "EN")
             )
 
         my_count = len(bm_pages)
@@ -509,7 +509,7 @@ if uploaded_files and split_btn:
                     if res.get("mode") == "BILINGUAL":
                         st.caption(
                             f"🔀 Dwibahasa (BM & BI dalam satu muka surat) → "
-                            f"fail penuh disalin sebagai _BM & _BI "
+                            f"fail penuh disalin sebagai _MY & _EN "
                             f"({res['my_count']} muka surat setiap satu)"
                         )
                     else:
