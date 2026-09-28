@@ -129,6 +129,30 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ============================================================
+# KEYWORDS
+# ============================================================
+
+BM_KEYWORDS = [
+    "UNDANG-UNDANG MALAYSIA", "KANUN TANAH NEGARA", "SUSUNAN PERENGGAN",
+    "SUSUNAN PERATURAN", "SENARAI PINDAAN", "PERINTAH", "PERATURAN",
+    "AKTA", "PADA MENJALANKAN KUASA", "JADUAL", "PERIZABAN TANAH",
+    "DIAMBIL PERHATIAN", "PEMBATALAN", "PENGECUALIAN", "MENTERI ",
+    "DIBUAT ", "BERTARIKH", "LESEN", "TANAH", "PENUMPANG", "KARGO",
+    "KAPAL", " DENGAN ", " OLEH ", "MENURUT", "DISIARKAN OLEH",
+    "PENETAPAN", "YANG DIBERI KUASA", "PEGAWAI AWAM",
+]
+
+EN_KEYWORDS = [
+    "LAWS OF MALAYSIA", "NATIONAL LAND CODE", "ARRANGEMENT OF PARAGRAPHS",
+    "ARRANGEMENT OF REGULATIONS", "LIST OF AMENDMENTS", "ORDER",
+    "REGULATION", "ACT", "IN EXERCISE OF", "SCHEDULE", "RESERVATION OF LAND",
+    "TAKE NOTICE", "REVOCATION", "EXEMPTION", "MINISTER OF", "MADE ",
+    "DATED", "LICENCE", "LICENSE", "TONNAGE", "PASSENGER", "CARGO",
+    "VESSEL", "SHIP", " WITH ", " BY ", "PURSUANT", "PUBLISHED BY",
+    "DESIGNATION", "AUTHORIZED OFFICERS", "PUBLIC OFFICERS",
+]
+
 
 # ============================================================
 # GAZETTE METADATA
@@ -167,42 +191,59 @@ def extract_gazette_metadata(full_text, original_filename):
 # ============================================================
 # LANGUAGE DETECTION
 # ============================================================
+#
+# Every content page is scored against BM and EN keyword lists.
+# A page is labelled:
+#   BM      -> mostly Bahasa Melayu
+#   EN      -> mostly English
+#   BOTH    -> both languages present on the same page (bilingual layout)
+#   UNKNOWN -> no keyword matched
+#
+# When a page contains BOTH languages side-by-side, the old logic could
+# not split it cleanly (it would pick one language or drop the page on a
+# tie). We now detect that case and treat the WHOLE document as bilingual,
+# then simply output the full PDF twice, renamed _BM and _BI.
 
-def detect_page_language(text):
+BILINGUAL_RATIO = 0.5  # min(score)/max(score) at/above this = page has both langs
+BILINGUAL_DOC_RATIO = 0.5  # fraction of BOTH pages needed to call the doc bilingual
+
+
+def classify_page_language(text):
+    """Return (label, bm_score, en_score)."""
     text_upper = text.upper()
 
-    bm_keywords = [
-        "UNDANG-UNDANG MALAYSIA", "KANUN TANAH NEGARA", "SUSUNAN PERENGGAN",
-        "SUSUNAN PERATURAN", "SENARAI PINDAAN", "PERINTAH", "PERATURAN",
-        "AKTA", "PADA MENJALANKAN KUASA", "JADUAL", "PERIZABAN TANAH",
-        "DIAMBIL PERHATIAN", "PEMBATALAN", "PENGECUALIAN", "MENTERI ",
-        "DIBUAT ", "BERTARIKH", "LESEN", "TANAN", "PENUMPANG", "KARGO",
-        "KAPAL", " DENGAN ", " OLEH ",
-    ]
+    bm_score = sum(1 for k in BM_KEYWORDS if k in text_upper)
+    en_score = sum(1 for k in EN_KEYWORDS if k in text_upper)
 
-    en_keywords = [
-        "LAWS OF MALAYSIA", "NATIONAL LAND CODE", "ARRANGEMENT OF PARAGRAPHS",
-        "ARRANGEMENT OF REGULATIONS", "LIST OF AMENDMENTS", "ORDER",
-        "REGULATION", "ACT", "IN EXERCISE OF", "SCHEDULE", "RESERVATION OF LAND",
-        "TAKE NOTICE", "REVOCATION", "EXEMPTION", "MINISTER OF", "MADE ",
-        "DATED", "LICENCE", "LICENSE", "TONNAGE", "PASSENGER", "CARGO",
-        "VESSEL", "SHIP", " WITH ", " BY ",
-    ]
+    if bm_score == 0 and en_score == 0:
+        return "UNKNOWN", 0, 0
 
-    bm_score = sum(1 for k in bm_keywords if k in text_upper)
-    en_score = sum(1 for k in en_keywords if k in text_upper)
+    if bm_score > 0 and en_score > 0:
+        hi = max(bm_score, en_score)
+        lo = min(bm_score, en_score)
+        if lo / hi >= BILINGUAL_RATIO:
+            return "BOTH", bm_score, en_score
 
     if bm_score > en_score:
-        return "BM"
-    elif en_score > bm_score:
-        return "EN"
+        return "BM", bm_score, en_score
+    if en_score > bm_score:
+        return "EN", bm_score, en_score
 
-    return "UNKNOWN"
-
+    return "BOTH", bm_score, en_score
 
 # ============================================================
 # PROCESS PDF
 # ============================================================
+
+def _write_pdf(pages, output_dir, base_filename, suffix):
+    writer = PdfWriter()
+    for page in pages:
+        writer.add_page(page)
+    out_path = os.path.join(output_dir, f"{base_filename}_{suffix}.pdf")
+    with open(out_path, "wb") as f:
+        writer.write(f)
+    return out_path
+
 
 def process_gazette_pdf(file_bytes, original_filename):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
@@ -228,66 +269,94 @@ def process_gazette_pdf(file_bytes, original_filename):
     cover_page = None
     start_index = 0
 
+    # A pure cover page is only skipped when it is clearly a stand-alone
+    # cover. In many bilingual gazettes the first page already holds real
+    # content (BM + EN), so we keep it if it does.
     if is_cover_page and total_pages > 1:
-        cover_page = reader.pages[0]
-        start_index = 1
+        first_label, _, _ = classify_page_language(
+            reader.pages[0].extract_text() or ""
+        )
+        if first_label != "BOTH":
+            cover_page = reader.pages[0]
+            start_index = 1
 
-    my_pages = []
-    en_pages = []
-    current_detected_lang = None
+    # Classify every content page.
+    page_labels = []
+    both_count = 0
+    current_lang = None
 
     for i in range(start_index, total_pages):
         page = reader.pages[i]
         text = page.extract_text() or ""
-        lang = detect_page_language(text)
+        label, _, _ = classify_page_language(text)
 
-        if lang == "UNKNOWN" and current_detected_lang:
-            lang = current_detected_lang
-        elif lang != "UNKNOWN":
-            current_detected_lang = lang
+        if label == "BOTH":
+            both_count += 1
+        elif label == "UNKNOWN" and current_lang:
+            label = current_lang
+        elif label in ("BM", "EN"):
+            current_lang = label
 
-        if lang == "BM":
-            my_pages.append(page)
-        elif lang == "EN":
-            en_pages.append(page)
+        page_labels.append((page, label))
+
+    content_pages = [p for p, _ in page_labels]
+    n_content = len(content_pages)
+
+    # Decide document mode.
+    is_bilingual = (
+        n_content > 0
+        and (both_count / n_content) >= BILINGUAL_DOC_RATIO
+    )
 
     output_dir = tempfile.mkdtemp()
     output_files = []
 
-    if my_pages:
-        writer_my = PdfWriter()
-        if cover_page:
-            writer_my.add_page(cover_page)
-        for page in my_pages:
-            writer_my.add_page(page)
+    if is_bilingual:
+        # Cannot split BM/EN because both languages share the same pages.
+        # Just output the full document twice, renamed _BM and _BI.
+        mode = "BILINGUAL"
+        all_pages = ([cover_page] if cover_page else []) + content_pages
 
-        output_my = os.path.join(output_dir, f"{base_filename}_MY.pdf")
-        with open(output_my, "wb") as f:
-            writer_my.write(f)
-        output_files.append(output_my)
+        output_files.append(
+            _write_pdf(all_pages, output_dir, base_filename, "BM")
+        )
+        output_files.append(
+            _write_pdf(all_pages, output_dir, base_filename, "BI")
+        )
 
-    if en_pages:
-        writer_en = PdfWriter()
-        if cover_page:
-            writer_en.add_page(cover_page)
-        for page in en_pages:
-            writer_en.add_page(page)
+        my_count = len(all_pages)
+        en_count = len(all_pages)
+    else:
+        # Clean split into separate BM and BI PDFs.
+        mode = "SPLIT"
+        bm_pages = [p for p, lbl in page_labels if lbl == "BM"]
+        en_pages = [p for p, lbl in page_labels if lbl == "EN"]
 
-        output_en = os.path.join(output_dir, f"{base_filename}_EN.pdf")
-        with open(output_en, "wb") as f:
-            writer_en.write(f)
-        output_files.append(output_en)
+        if bm_pages:
+            pages = ([cover_page] if cover_page else []) + bm_pages
+            output_files.append(
+                _write_pdf(pages, output_dir, base_filename, "BM")
+            )
+
+        if en_pages:
+            pages = ([cover_page] if cover_page else []) + en_pages
+            output_files.append(
+                _write_pdf(pages, output_dir, base_filename, "BI")
+            )
+
+        my_count = len(bm_pages)
+        en_count = len(en_pages)
 
     os.remove(input_path)
 
     return (
         base_filename,
         output_files,
-        len(my_pages),
-        len(en_pages),
-        is_cover_page
+        my_count,
+        en_count,
+        is_cover_page,
+        mode
     )
-
 
 # ============================================================
 # USER INTERFACE
@@ -316,7 +385,7 @@ with st.container(border=True):
 
     if uploaded_files:
         st.info(f"📄 **{len(uploaded_files)} fail** sedia diproses.")
-        
+
         split_btn = st.button(
             f"🚀 ASINGKAN {len(uploaded_files)} FAIL SEKARANG",
             use_container_width=True,
@@ -342,7 +411,8 @@ if uploaded_files and split_btn:
                         output_files,
                         my_count,
                         en_count,
-                        cover_found
+                        cover_found,
+                        mode
                     ) = process_gazette_pdf(
                         uploaded_file.getvalue(),
                         uploaded_file.name
@@ -351,10 +421,12 @@ if uploaded_files and split_btn:
                     total_bm_pages += my_count
                     total_en_pages += en_count
 
-                    # Masukkan setiap fail ke dalam subfolder bernama base_filename di dalam ZIP
                     for output_file in output_files:
                         filename = os.path.basename(output_file)
-                        zip_file.write(output_file, arcname=f"{base_filename}/{filename}")
+                        zip_file.write(
+                            output_file,
+                            arcname=f"{base_filename}/{filename}"
+                        )
 
                     all_results.append({
                         "status": "success",
@@ -363,6 +435,7 @@ if uploaded_files and split_btn:
                         "my_count": my_count,
                         "en_count": en_count,
                         "cover_found": cover_found,
+                        "mode": mode,
                         "output_files": output_files
                     })
                 except Exception as e:
@@ -378,7 +451,6 @@ if uploaded_files and split_btn:
 
         st.markdown("### 📊 Ringkasan Keseluruhan")
 
-        # Top Level Overall Metrics
         col1, col2, col3 = st.columns(3)
 
         with col1:
@@ -402,7 +474,7 @@ if uploaded_files and split_btn:
         with col3:
             st.markdown(f"""
             <div class="stat-card">
-                <div class="stat-label">🇬🇧 Total EN</div>
+                <div class="stat-label">🇬🇧 Total BI</div>
                 <div class="stat-value">{total_en_pages}</div>
                 <div class="stat-desc">Muka Surat</div>
             </div>
@@ -411,15 +483,14 @@ if uploaded_files and split_btn:
         st.write("")
         st.divider()
 
-        # Action Area - Single ZIP Download Button
         zip_filename = (
-            f"{all_results[0]['gazette_id']}.zip" 
+            f"{all_results[0]['gazette_id']}.zip"
             if len(all_results) == 1 and all_results[0]['status'] == 'success'
             else "BANG_KILL_PDF_BATCH.zip"
         )
 
         st.download_button(
-            f"📦 DOWNLOAD SEMUA FAIL (.ZIP 1-KLIK)",
+            "📦 DOWNLOAD SEMUA FAIL (.ZIP 1-KLIK)",
             data=zip_buffer,
             file_name=zip_filename,
             mime="application/zip",
@@ -427,17 +498,26 @@ if uploaded_files and split_btn:
             type="primary"
         )
 
-        # Per-File Breakdown View
         with st.expander("📂 Lihat butiran setiap fail yang diproses"):
             for res in all_results:
                 if res["status"] == "success":
                     st.markdown(
-                        f"🔹 **{res['filename']}** $\rightarrow$ ID Gazette: <span class='gazette-tag'>{res['gazette_id']}</span>",
+                        f"🔹 **{res['filename']}** $\\rightarrow$ ID Gazette: "
+                        f"<span class='gazette-tag'>{res['gazette_id']}</span>",
                         unsafe_allow_html=True
                     )
-                    st.caption(
-                        f"🇲🇾 BM: {res['my_count']} muka surat | 🇬🇧 EN: {res['en_count']} muka surat | Cover: {'Dikesan' if res['cover_found'] else 'Tiada'}"
-                    )
+                    if res.get("mode") == "BILINGUAL":
+                        st.caption(
+                            f"🔀 Dwibahasa (BM & BI dalam satu muka surat) → "
+                            f"fail penuh disalin sebagai _BM & _BI "
+                            f"({res['my_count']} muka surat setiap satu)"
+                        )
+                    else:
+                        st.caption(
+                            f"🇲🇾 BM: {res['my_count']} muka surat | "
+                            f"🇬🇧 BI: {res['en_count']} muka surat | "
+                            f"Cover: {'Dikesan' if res['cover_found'] else 'Tiada'}"
+                        )
                 else:
                     st.error(f"❌ **{res['filename']}**: {res['error']}")
                 st.divider()
